@@ -1,0 +1,915 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model activities {
+  id                Int                   @id @default(autoincrement())
+  userId            Int
+  leadId            Int?
+  type              ActivityType
+  subject           String
+  description       String?
+  occurredAt        DateTime
+  duration          Int?
+  outcome           String?
+  nextAction        String?
+  nextActionDate    DateTime?
+  evidenceUrl       String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime
+  activityScore     Float                 @default(0.0)
+  channel           CommunicationChannel?
+  companyId         Int?
+  contactId         Int?
+  effectiveness     EffectivenessLevel?
+  engagementQuality EffectivenessLevel?
+  followUpRequired  Boolean               @default(false)
+  followUpScheduled Boolean               @default(false)
+  opportunityId     Int?
+  responseReceived  Boolean               @default(false)
+  responseTime      Int?
+  sentiment         SentimentType?
+  companies         companies?            @relation(fields: [companyId], references: [id])
+  contacts          contacts?             @relation(fields: [contactId], references: [id])
+  leads             leads?                @relation(fields: [leadId], references: [id])
+  opportunities     opportunities?        @relation(fields: [opportunityId], references: [id])
+  users             users                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([leadId])
+  @@index([occurredAt])
+  @@index([opportunityId])
+  @@index([type])
+  @@index([userId, occurredAt])
+}
+
+model attendances {
+  id                                  Int              @id @default(autoincrement())
+  userId                              Int
+  date                                DateTime         @default(now())
+  visitReport                         String
+  timelineUrl                         String?
+  photoUrl                            String?
+  submittedAt                         DateTime         @default(now())
+  status                              AttendanceStatus @default(SUBMITTED)
+  reviewerId                          Int?
+  reviewedAt                          DateTime?
+  reviewNotes                         String?
+  approvedAt                          DateTime?
+  accuracy                            Float?
+  address                             String?
+  altitude                            Float?
+  city                                String?
+  country                             String?
+  distanceFromLastLocation            Float?
+  heading                             Float?
+  isLocationValid                     Boolean?         @default(true)
+  latitude                            Float?
+  locationAccuracyLevel               String?
+  locationProvider                    String?
+  locationRiskLevel                   String?
+  locationSource                      String?
+  locationTimestamp                   DateTime?
+  locationValidationWarnings          String?
+  longitude                           Float?
+  postalCode                          String?
+  speed                               Float?
+  state                               String?
+  users_attendances_reviewerIdTousers users?           @relation("attendances_reviewerIdTousers", fields: [reviewerId], references: [id])
+  users_attendances_userIdTousers     users            @relation("attendances_userIdTousers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model companies {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @unique
+  region             String
+  type               String
+  address            String?
+  website            String?
+  totalOpportunities Int                  @default(0)
+  openDeals          Int                  @default(0)
+  totalValue         Float                @default(0)
+  createdDate        DateTime             @default(now())
+  updatedAt          DateTime
+  ownerId            Int
+  activities         activities[]
+  users              users                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  contacts           contacts[]
+  daily_follow_ups   daily_follow_ups[]
+  leads              leads[]
+  opportunities      opportunities[]
+  pending_quotations pending_quotations[]
+  pipelines          pipelines[]
+}
+
+model contacts {
+  id                                     Int                    @id @default(autoincrement())
+  name                                   String
+  role                                   String
+  email                                  String?
+  phone                                  String?
+  companyId                              Int
+  buyingStage                            BuyingProcessStage?
+  contactScore                           Float                  @default(0.0)
+  engagementLevel                        ContactEngagementLevel @default(LOW)
+  influenceLevel                         InfluenceLevel?
+  lastInteraction                        DateTime?
+  painPoints                             String?
+  preferredChannel                       CommunicationChannel?
+  activities                             activities[]
+  companies                              companies              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  daily_follow_ups                       daily_follow_ups[]
+  leads_leads_contactIdTocontacts        leads[]                @relation("leads_contactIdTocontacts")
+  leads_leads_primaryContactIdTocontacts leads[]                @relation("leads_primaryContactIdTocontacts")
+
+  @@index([companyId])
+  @@index([contactScore])
+  @@index([email])
+  @@index([engagementLevel])
+}
+
+model daily_follow_ups {
+  id                    Int                   @id @default(autoincrement())
+  assignedTo            String
+  actionType            FollowUpType
+  actionDescription     String
+  status                FollowUpStatus        @default(SCHEDULED)
+  followUpDate          DateTime
+  followUpPhoto         String?
+  notes                 String?
+  effectivenessScore    Float?
+  completionQuality     QualityScore?
+  optimalTimeSlot       String?
+  timezone              String?
+  responseReceived      Boolean               @default(false)
+  responseQuality       QualityScore?
+  nextActionDate        DateTime?
+  nextActionNotes       String?
+  projectId             Int?
+  salesDealId           Int?
+  immediateSaleId       Int?
+  createdById           Int
+  notificationSent      Boolean               @default(false)
+  reminderSent          Boolean               @default(false)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime
+  actualOutcome         String?
+  automatedTrigger      Boolean               @default(false)
+  channelUsed           CommunicationChannel?
+  companyId             Int?
+  contactId             Int?
+  conversionImpact      Float                 @default(0.0)
+  customerSatisfaction  Float?
+  engagementQuality     EffectivenessLevel?
+  expectedOutcome       String?
+  leadId                Int?
+  opportunityId         Int?
+  priorityScore         Int                   @default(1)
+  sentimentAnalysis     SentimentType?
+  timeSpent             Int?
+  triggerSource         String?
+  urgencyLevel          UrgencyLevel          @default(MEDIUM)
+  overdueAcknowledgedAt DateTime?
+  overdueAcknowledgedBy Int?
+  overdueReason         String?
+  companies             companies?            @relation(fields: [companyId], references: [id])
+  contacts              contacts?             @relation(fields: [contactId], references: [id])
+  users                 users                 @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  immediate_sales       immediate_sales?      @relation(fields: [immediateSaleId], references: [id])
+  leads                 leads?                @relation(fields: [leadId], references: [id])
+  opportunities         opportunities?        @relation(fields: [opportunityId], references: [id])
+  projects              projects?             @relation(fields: [projectId], references: [id])
+  sales_deals           sales_deals?          @relation(fields: [salesDealId], references: [id])
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([createdById, status])
+  @@index([followUpDate])
+  @@index([immediateSaleId])
+  @@index([leadId])
+  @@index([opportunityId])
+  @@index([priorityScore])
+  @@index([projectId])
+  @@index([salesDealId])
+  @@index([status])
+}
+
+model forecasts {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  year      Int
+  month     Int
+  region    String
+  target    Int      @default(0)
+  achieved  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month, region])
+}
+
+model immediate_sales {
+  id                      Int                      @id @default(autoincrement())
+  projectId               Int?
+  ownerId                 Int
+  contractor              String?
+  sizeClass               String?
+  km                      Float?
+  mt                      Float?
+  valueOfOrder            Float?
+  dealCategory            DealCategory             @default(SMALL)
+  urgencyLevel            UrgencyLevel             @default(MEDIUM)
+  quotationDate           DateTime?
+  status                  SalesStatus              @default(BIDDING)
+  pic                     String?
+  lastActivityDate        DateTime?
+  nextFollowUpDate        DateTime?
+  followUpCount           Int                      @default(0)
+  conversionProbability   Float?
+  estimatedCloseDate      DateTime?
+  provinceWaterMappingId  Int?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime
+  daily_follow_ups        daily_follow_ups[]
+  users                   users                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects                projects?                @relation(fields: [projectId], references: [id])
+  province_water_mappings province_water_mappings? @relation(fields: [provinceWaterMappingId], references: [id])
+  pending_quotations      pending_quotations[]
+  sales_deals             sales_deals[]            @relation("ImmediateSaleToSalesDeal")
+}
+
+model leads {
+  id                                        Int                    @id @default(autoincrement())
+  name                                      String
+  source                                    String
+  status                                    String                 @default("new")
+  ownerId                                   Int
+  email                                     String?
+  phone                                     String?
+  createdDate                               DateTime               @default(now())
+  updatedAt                                 DateTime
+  authorityLevel                            InfluenceLevel?
+  autoQualificationScore                    Float?                 @default(0.0)
+  budgetRange                               String?
+  buyingProcessStage                        BuyingProcessStage?
+  contactId                                 Int?
+  decisionMaker                             String?
+  engagementScore                           Float                  @default(0.0)
+  lastActivityDate                          DateTime?
+  leadScore                                 Float                  @default(0.0)
+  nextFollowUpDate                          DateTime?
+  painPoints                                String?
+  primaryContactId                          Int?
+  qualificationStage                        LeadQualificationStage @default(NEW)
+  timeline                                  String?
+  note                                      String?
+  companyId                                 Int?
+  eventDetails                              String?
+  activities                                activities[]
+  daily_follow_ups                          daily_follow_ups[]
+  companies                                 companies?             @relation(fields: [companyId], references: [id])
+  contacts_leads_contactIdTocontacts        contacts?              @relation("leads_contactIdTocontacts", fields: [contactId], references: [id])
+  users                                     users                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  contacts_leads_primaryContactIdTocontacts contacts?              @relation("leads_primaryContactIdTocontacts", fields: [primaryContactId], references: [id])
+  opportunities                             opportunities[]
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([leadScore])
+  @@index([ownerId, status])
+  @@index([primaryContactId])
+  @@index([qualificationStage])
+}
+
+model ml_anomalies {
+  id             Int       @id @default(autoincrement())
+  anomalyType    String
+  entityId       String?
+  entityType     String?
+  anomalyScore   Float
+  threshold      Float     @default(2.0)
+  detectedAt     DateTime  @default(now())
+  description    String?
+  severity       String    @default("medium")
+  status         String    @default("detected")
+  investigatedBy Int?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([anomalyType, detectedAt])
+  @@index([entityId])
+}
+
+model ml_customer_segments {
+  id                Int      @id @default(autoincrement())
+  customerId        Int
+  segmentName       String
+  segmentScore      Float    @default(0.5)
+  behavioralFactors Json?
+  clusterFeatures   Json?
+  confidence        Float    @default(0.5)
+  lastUpdated       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([customerId])
+  @@index([segmentName])
+}
+
+model ml_model_performance {
+  id               Int      @id @default(autoincrement())
+  modelName        String
+  modelType        String
+  metricName       String
+  metricValue      Float
+  datasetSize      Int
+  timeRange        String?
+  trainingDuration Int?
+  lastTrained      DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  @@unique([modelName, metricName, timeRange])
+  @@index([modelName, lastTrained])
+}
+
+model ml_predictions {
+  id              Int       @id @default(autoincrement())
+  modelType       String
+  predictionType  String
+  targetId        String?
+  predictedValue  Float?
+  confidenceScore Float     @default(0.5)
+  actualValue     Float?
+  predictionDate  DateTime  @default(now())
+  actualDate      DateTime?
+  accuracy        Float?
+  features        Json?
+  modelVersion    String    @default("v1.0")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime
+
+  @@index([modelType, predictionDate])
+  @@index([targetId])
+}
+
+model notifications {
+  id                                  Int      @id @default(autoincrement())
+  title                               String
+  message                             String
+  type                                String   @default("info")
+  url                                 String?
+  isRead                              Boolean  @default(false)
+  createdAt                           DateTime @default(now())
+  updatedAt                           DateTime
+  userId                              Int
+  senderId                            Int?
+  users_notifications_senderIdTousers users?   @relation("notifications_senderIdTousers", fields: [senderId], references: [id])
+  users_notifications_userIdTousers   users    @relation("notifications_userIdTousers", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model opportunities {
+  id                     Int                  @id @default(autoincrement())
+  companyId              Int?
+  leadId                 Int?
+  name                   String
+  stage                  OpportunityStage     @default(PROSPECTING)
+  dealSize               Float                @default(0)
+  probability            Int                  @default(0)
+  classification         DealClassification?
+  expectedCloseDate      DateTime?
+  nextFollowupDate       DateTime?
+  lostReason             String?
+  wonDate                DateTime?
+  ownerId                Int
+  createdDate            DateTime             @default(now())
+  updatedAt              DateTime
+  autoUpdateEnabled      Boolean              @default(true)
+  bottleneckRisk         Float                @default(0.0)
+  championContactId      Int?
+  closedValue            Float?
+  competitorAnalysis     String?
+  conversionConfidence   Float                @default(0.0)
+  dealComplexity         DealComplexity       @default(MEDIUM)
+  decisionMakerId        Int?
+  lastActivityDate       DateTime?
+  nextActionDue          DateTime?
+  nextActionRequired     Boolean              @default(false)
+  nextActionType         String?
+  primaryContactId       Int?
+  riskFactors            String?
+  secondaryContactIds    Int[]
+  stageVelocity          Int?
+  timeToClose            Int?
+  totalTimeInPipeline    Int?
+  uniqueValueProposition String?
+  winProbability         Float                @default(0.0)
+  quantity               Int?
+  sizeDI                 String?
+  status                 String?
+  frozenReason           String?
+  isFrozen               Boolean              @default(false)
+  activities             activities[]
+  daily_follow_ups       daily_follow_ups[]
+  companies              companies?           @relation(fields: [companyId], references: [id])
+  leads                  leads?               @relation(fields: [leadId], references: [id])
+  users                  users                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  pending_quotations     pending_quotations[]
+  pipelines              pipelines?
+
+  @@index([championContactId])
+  @@index([companyId])
+  @@index([decisionMakerId])
+  @@index([expectedCloseDate])
+  @@index([leadId])
+  @@index([ownerId, stage])
+  @@index([primaryContactId])
+  @@index([probability])
+  @@index([stage])
+}
+
+model pipelines {
+  id                   Int            @id @default(autoincrement())
+  opportunityId        Int            @unique
+  companyId            Int?
+  name                 String
+  status               PipelineStatus @default(ORDER_RECEIVED)
+  orderValue           Float          @default(0)
+  quantity             Float?
+  diameter             String?
+  specification        String?
+  orderDate            DateTime       @default(now())
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  expectedInstallDate  DateTime?
+  actualInstallDate    DateTime?
+  progressPercentage   Float          @default(0)
+  challenges           String?
+  nextMilestone        String?
+  notes                String?
+  paymentReceived      Boolean        @default(false)
+  paymentDate          DateTime?
+  paymentAmount        Float          @default(0)
+  ownerId              Int
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  companies            companies?     @relation(fields: [companyId], references: [id])
+  opportunities        opportunities  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  users                users          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId])
+  @@index([companyId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([orderDate])
+  @@index([expectedDeliveryDate])
+}
+
+model tempRegistrations {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  employeeCode String
+  password     String
+  otp          String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}
+
+model pending_quotations {
+  id                    Int              @id @default(autoincrement())
+  projectOrClientName   String
+  projectId             Int?
+  immediateSaleId       Int?
+  salesDealId           Int?
+  quotationPendingSince DateTime?
+  quotationDeadline     DateTime?
+  orderValue            Float?
+  contactPerson         String?
+  contactEmail          String?
+  quotationDocument     String?
+  status                QuotationStatus  @default(PENDING)
+  notes                 String?
+  daysPending           Int?
+  daysToDeadline        Int?
+  isOverdue             Boolean          @default(false)
+  urgencyLevel          UrgencyLevel     @default(MEDIUM)
+  lastReminderSent      DateTime?
+  reminderCount         Int              @default(0)
+  complianceStatus      ComplianceStatus @default(COMPLIANT)
+  responseProbability   Float?
+  createdById           Int
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime
+  companyId             Int?
+  opportunityId         Int?
+  totalQty              String?
+  companies             companies?       @relation(fields: [companyId], references: [id])
+  users                 users            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  immediate_sales       immediate_sales? @relation(fields: [immediateSaleId], references: [id])
+  opportunities         opportunities?   @relation(fields: [opportunityId], references: [id])
+  projects              projects?        @relation(fields: [projectId], references: [id])
+  sales_deals           sales_deals?     @relation(fields: [salesDealId], references: [id])
+}
+
+model privacySettings {
+  id                Int     @id @default(autoincrement())
+  profileVisibility String  @default("team")
+  showEmail         Boolean @default(false)
+  showPhone         Boolean @default(true)
+  showLocation      Boolean @default(true)
+  allowMessages     Boolean @default(true)
+  showActivity      Boolean @default(true)
+  userEmail         String  @unique
+  users             users   @relation(fields: [userEmail], references: [email])
+}
+
+model projects {
+  id                                    Int                      @id @default(autoincrement())
+  name                                  String
+  province                              String
+  ownerId                               Int
+  funding                               String?
+  consultant                            String?
+  contractor                            String?
+  competitors                           String?
+  sizeClass                             String?
+  unitOfMeasurement                     String?
+  approxMT                              Float?
+  status                                ProjectStatus            @default(ONGOING)
+  monthOfQuote                          String?
+  dateOfStartProcurement                DateTime?
+  pic                                   String?
+  assignedAdminId                       Int?
+  projectHealth                         HealthStatus             @default(GOOD)
+  riskLevel                             RiskLevel                @default(LOW)
+  completionProbability                 Float?
+  provinceWaterMappingId                Int?
+  createdAt                             DateTime                 @default(now())
+  updatedAt                             DateTime
+  daily_follow_ups                      daily_follow_ups[]
+  immediate_sales                       immediate_sales[]
+  pending_quotations                    pending_quotations[]
+  users_projects_assignedAdminIdTousers users?                   @relation("projects_assignedAdminIdTousers", fields: [assignedAdminId], references: [id])
+  users_projects_ownerIdTousers         users                    @relation("projects_ownerIdTousers", fields: [ownerId], references: [id], onDelete: Cascade)
+  province_water_mappings               province_water_mappings? @relation(fields: [provinceWaterMappingId], references: [id])
+  sales_deals                           sales_deals[]
+}
+
+model province_water_mappings {
+  id                   Int               @id @default(autoincrement())
+  waterCompany         String            @unique
+  province             String
+  companyType          CompanyType       @default(PRIVATE)
+  waterCompanyContacts String?
+  contractors          String?
+  contractorContacts   String?
+  traders              String?
+  traderContacts       String?
+  consultants          String?
+  consultantContacts   String?
+  pic                  String?
+  companyRating        CompanyRating     @default(MEDIUM)
+  reliabilityScore     Float?
+  lastInteractionDate  DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime
+  immediate_sales      immediate_sales[]
+  projects             projects[]
+  sales_deals          sales_deals[]
+}
+
+model push_subscriptions {
+  id        Int      @id @default(autoincrement())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  userId    Int
+  users     users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model sales_deals {
+  id                      Int                      @id @default(autoincrement())
+  name                    String
+  projectId               Int?
+  currentStatus           DealStatus               @default(BIDDING)
+  orderValue              Float?
+  ownerId                 Int
+  contractor              String?
+  consultant              String?
+  pipeSizeClass           String?
+  length                  Float?
+  tonnage                 Float?
+  expectedCloseDate       DateTime?
+  province                String?
+  keyContact              String?
+  dealPhotos              String?
+  isQuotationPending      Boolean                  @default(false)
+  dealHealth              HealthStatus             @default(GOOD)
+  conversionProbability   Float?
+  riskLevel               RiskLevel                @default(LOW)
+  provinceWaterMappingId  Int?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime
+  daily_follow_ups        daily_follow_ups[]
+  pending_quotations      pending_quotations[]
+  users                   users                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects                projects?                @relation(fields: [projectId], references: [id])
+  province_water_mappings province_water_mappings? @relation(fields: [provinceWaterMappingId], references: [id])
+  immediate_sales         immediate_sales[]        @relation("ImmediateSaleToSalesDeal")
+}
+
+model users {
+  id                                          Int                  @id @default(autoincrement())
+  name                                        String
+  email                                       String               @unique
+  employeeCode                                String               @unique
+  password                                    String
+  verified                                    Boolean              @default(false)
+  role                                        String               @default("user")
+  department                                  String?
+  bio                                         String?
+  phone                                       String?
+  location                                    String?
+  createdAt                                   DateTime             @default(now())
+  enableNotifications                         Boolean              @default(true)
+  notificationPreferences                     Json?
+  avatar                                      String?
+  avatarFileName                              String?
+  avatarFileSize                              Int?
+  avatarLarge                                 String?
+  avatarMedium                                String?
+  avatarMimeType                              String?
+  avatarThumbnail                             String?
+  avatarUploadedAt                            DateTime?
+  preferences                                 Json?
+  updatedAt                                   DateTime             @default(now())
+  activities                                  activities[]
+  attendances_attendances_reviewerIdTousers   attendances[]        @relation("attendances_reviewerIdTousers")
+  attendances_attendances_userIdTousers       attendances[]        @relation("attendances_userIdTousers")
+  companies                                   companies[]
+  daily_follow_ups                            daily_follow_ups[]
+  forecasts                                   forecasts[]
+  immediate_sales                             immediate_sales[]
+  leads                                       leads[]
+  notifications_notifications_senderIdTousers notifications[]      @relation("notifications_senderIdTousers")
+  notifications_notifications_userIdTousers   notifications[]      @relation("notifications_userIdTousers")
+  opportunities                               opportunities[]
+  pending_quotations                          pending_quotations[]
+  pipelines                                   pipelines[]
+  privacySettings                             privacySettings?
+  projects_projects_assignedAdminIdTousers    projects[]           @relation("projects_assignedAdminIdTousers")
+  projects_projects_ownerIdTousers            projects[]           @relation("projects_ownerIdTousers")
+  push_subscriptions                          push_subscriptions[]
+  sales_deals                                 sales_deals[]
+}
+
+enum ActivityType {
+  CALL
+  VISIT
+  MEETING
+  EMAIL
+  DEMO
+  PROPOSAL
+  FOLLOW_UP
+  OTHER
+}
+
+enum AttendanceStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  AUTO_FLAGGED
+  AMENDED
+}
+
+enum BuyingProcessStage {
+  UNAWARE
+  AWARE
+  INTERESTED
+  EVALUATING
+  NEGOTIATING
+  PURCHASE
+}
+
+enum CommunicationChannel {
+  EMAIL
+  PHONE
+  MEETING
+  SOCIAL_MEDIA
+  IN_PERSON
+  CHAT
+  WEBSITE
+  OTHER
+}
+
+enum CompanyRating {
+  LOW
+  MEDIUM
+  HIGH
+  PREMIUM
+}
+
+enum CompanyType {
+  FULL_GOVT
+  JOINT_STOCK
+  PRIVATE
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  WARNING
+  CRITICAL
+  BREACHED
+}
+
+enum ContactEngagementLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VIP
+}
+
+enum DealCategory {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+enum DealClassification {
+  ENTERPRISE
+  MID_MARKET
+  SMALL_BUSINESS
+}
+
+enum DealComplexity {
+  LOW
+  MEDIUM
+  HIGH
+  ENTERPRISE
+}
+
+enum DealStatus {
+  BIDDING
+  ONGOING
+  WON
+  LOST
+  ON_HOLD
+  PENDING
+}
+
+enum EffectivenessLevel {
+  LOW
+  MEDIUM
+  HIGH
+  EXCELLENT
+}
+
+enum FollowUpStatus {
+  SCHEDULED
+  COMPLETED
+  POSTPONED
+  CANCELLED
+  OVERDUE
+}
+
+enum FollowUpType {
+  CALL
+  MEETING
+  EMAIL
+  MESSAGE
+  SITE_VISIT
+  OTHER
+}
+
+enum HealthStatus {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  CRITICAL
+}
+
+enum InfluenceLevel {
+  DECISION_MAKER
+  INFLUENCER
+  GATEKEEPER
+  USER
+  END_USER
+}
+
+enum LeadQualificationStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum OpportunityStage {
+  PROSPECTING
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+  LEAD_GENERATED
+  INITIAL_CONTACT
+  NEEDS_ANALYSIS
+  VALUE_PROPOSITION
+  PROPOSAL_PREPARATION
+  PROPOSAL_REVIEW
+  CONTRACT_REVIEW
+  FINAL_APPROVAL
+  ON_HOLD
+  CANCELLED
+  LOST_TO_COMPETITOR
+}
+
+enum PipelineStatus {
+  ORDER_RECEIVED
+  ORDER_PROCESSING
+  CONTRACT_SIGNING
+  PRODUCTION_STARTED
+  QUALITY_CHECK
+  PACKING_SHIPPING
+  SHIPPED
+  DELIVERED
+  INSTALLATION_STARTED
+  INSTALLATION_COMPLETE
+  PAYMENT_RECEIVED
+  PROJECT_COMPLETE
+  ON_HOLD
+  DELAYED
+  CANCELLED
+  DISPUTED
+}
+
+enum ProjectStatus {
+  ONGOING
+  BIDDING
+  DESIGN
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum QualityScore {
+  POOR
+  FAIR
+  GOOD
+  VERY_GOOD
+  EXCELLENT
+}
+
+enum QuotationStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  NEGOTIATION
+  REQUOTATION
+  DONE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SalesStatus {
+  BIDDING
+  ONGOING
+  AWARDED
+  LOST
+  PENDING
+}
+
+enum SentimentType {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum UrgencyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}

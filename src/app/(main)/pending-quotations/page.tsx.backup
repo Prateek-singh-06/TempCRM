@@ -1,0 +1,1237 @@
+"use client";
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  FileClock,
+  Plus,
+  Search,
+  AlertTriangle,
+  Clock,
+  DollarSign,
+  Calendar,
+  Mail,
+  FileText,
+  TrendingUp,
+  AlertCircle,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  Download,
+} from "lucide-react";
+
+interface PendingQuotation {
+  id: string;
+  projectOrClientName: string;
+  quotationPendingSince?: string;
+  quotationDeadline?: string;
+  orderValue?: number;
+  contactPerson?: string;
+  contactEmail?: string;
+  quotationDocument?: string;
+  status: string;
+  notes?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  // Computed fields
+  daysPending?: number;
+  isOverdue?: boolean;
+  daysToDeadline?: number;
+  urgencyLevel?: string;
+  statusColor?: string;
+}
+
+export default function PendingQuotationsPage() {
+  const [quotations, setQuotations] = useState<PendingQuotation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [urgencyFilter, setUrgencyFilter] = useState("all");
+  const [showOverdue, setShowOverdue] = useState(false);
+  const [selectedQuotation, setSelectedQuotation] = useState<PendingQuotation | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isFollowUpDialogOpen, setIsFollowUpDialogOpen] = useState(false);
+  const [linkedFollowUps, setLinkedFollowUps] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ role: string; id: string } | null>(null);
+
+  // Form states
+  const [formData, setFormData] = useState({
+    projectOrClientName: "",
+    quotationPendingSince: new Date().toISOString().split('T')[0],
+    quotationDeadline: "",
+    orderValue: "",
+    contactPerson: "",
+    contactEmail: "",
+    quotationDocument: "",
+    status: "PENDING",
+    notes: ""
+  });
+
+  // Follow-up form states
+  const [followUpFormData, setFollowUpFormData] = useState({
+    followUpType: "CALL",
+    description: "",
+    nextAction: "",
+    nextActionDate: "",
+    priority: "MEDIUM",
+    notes: "",
+    sendReminder: false
+  });
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      const userData = JSON.parse(storedUser);
+      setCurrentUser({ role: userData.role || 'user', id: userData.id });
+    }
+    fetchQuotations();
+  }, []);
+
+  const fetchQuotations = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/pending-quotations');
+      const data = await response.json();
+
+      if (response.ok) {
+        const enhancedQuotations = data.quotations.map((quote: PendingQuotation) => {
+          const now = new Date();
+          const pendingSince = quote.quotationPendingSince ? new Date(quote.quotationPendingSince) : now;
+          const deadline = quote.quotationDeadline ? new Date(quote.quotationDeadline) : null;
+
+          const daysPending = Math.floor((now.getTime() - pendingSince.getTime()) / (1000 * 60 * 60 * 24));
+          const isOverdue = deadline && deadline < now;
+          const daysToDeadline = deadline ? Math.floor((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+          let urgencyLevel = 'LOW';
+          let statusColor = 'gray';
+
+          if (isOverdue) {
+            urgencyLevel = 'OVERDUE';
+            statusColor = 'red';
+          } else if (daysToDeadline !== null) {
+            if (daysToDeadline <= 1) {
+              urgencyLevel = 'CRITICAL';
+              statusColor = 'red';
+            } else if (daysToDeadline <= 3) {
+              urgencyLevel = 'HIGH';
+              statusColor = 'orange';
+            } else if (daysToDeadline <= 7) {
+              urgencyLevel = 'MEDIUM';
+              statusColor = 'yellow';
+            }
+          }
+
+          return {
+            ...quote,
+            daysPending,
+            isOverdue,
+            daysToDeadline,
+            urgencyLevel,
+            statusColor
+          };
+        });
+
+        setQuotations(enhancedQuotations);
+      } else {
+        setError(data.error || 'Failed to fetch quotations');
+      }
+    } catch (error) {
+      console.error('Error fetching quotations:', error);
+      setError('Failed to load quotations');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = async (type: string, format: 'excel' | 'pdf' = 'excel') => {
+    try {
+      const exportUrl = `/api/export?type=${type}&format=${format}`;
+      window.open(exportUrl, '_blank');
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export quotations data. Please try again.');
+    }
+  };
+
+  const handleFilteredExport = async (filterType: string) => {
+    try {
+      let exportUrl = '';
+
+      if (filterType === 'overdue-quotations') {
+        // Export only overdue quotations
+        const overdueQuotations = quotations.filter(q => q.isOverdue);
+        const exportData = { pendingQuotations: overdueQuotations };
+        const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        exportUrl = url;
+      } else {
+        // For other filters, use the API with filter parameters
+        exportUrl = `/api/export?type=pending-quotations&format=excel&filter=${filterType}`;
+      }
+
+      window.open(exportUrl, '_blank');
+    } catch (error) {
+      console.error('Filtered export failed:', error);
+      alert('Failed to export filtered data. Please try again.');
+    }
+  };
+
+  const handleCreateQuotation = async () => {
+    try {
+      const response = await fetch('/api/pending-quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          orderValue: formData.orderValue ? parseFloat(formData.orderValue) : undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsCreateDialogOpen(false);
+        setFormData({
+          projectOrClientName: "",
+          quotationPendingSince: new Date().toISOString().split('T')[0],
+          quotationDeadline: "",
+          orderValue: "",
+          contactPerson: "",
+          contactEmail: "",
+          quotationDocument: "",
+          status: "PENDING",
+          notes: ""
+        });
+        fetchQuotations();
+      } else {
+        alert(typeof data.error === 'string' ? data.error : data.error?.message || 'Failed to create quotation');
+      }
+    } catch (error) {
+      console.error('Error creating quotation:', error);
+      alert('Failed to create quotation');
+    }
+  };
+
+  const fetchLinkedFollowUps = async (quotationId: string) => {
+    try {
+      const response = await fetch(`/api/pending-quotations/link-followup?quotationId=${quotationId}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setLinkedFollowUps(data.followUps || []);
+      } else {
+        console.error('Failed to fetch linked follow-ups:', data.error);
+      }
+    } catch (error) {
+      console.error('Error fetching linked follow-ups:', error);
+    }
+  };
+
+  const handleCreateFollowUp = async () => {
+    if (!selectedQuotation) return;
+
+    try {
+      const response = await fetch('/api/pending-quotations/link-followup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quotationId: selectedQuotation.id,
+          ...followUpFormData
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsFollowUpDialogOpen(false);
+        setFollowUpFormData({
+          followUpType: "CALL",
+          description: "",
+          nextAction: "",
+          nextActionDate: "",
+          priority: "MEDIUM",
+          notes: "",
+          sendReminder: false
+        });
+        fetchLinkedFollowUps(selectedQuotation.id);
+        alert('Follow-up created successfully!');
+      } else {
+        alert(typeof data.error === 'string' ? data.error : data.error?.message || 'Failed to create follow-up');
+      }
+    } catch (error) {
+      console.error('Error creating follow-up:', error);
+      alert('Failed to create follow-up');
+    }
+  };
+
+  const filteredQuotations = quotations.filter(quote => {
+    const matchesSearch = quote.projectOrClientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (quote.contactPerson && quote.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesStatus = statusFilter === "all" || quote.status === statusFilter;
+    const matchesUrgency = urgencyFilter === "all" || quote.urgencyLevel === urgencyFilter;
+    const matchesOverdue = !showOverdue || quote.isOverdue;
+
+    return matchesSearch && matchesStatus && matchesUrgency && matchesOverdue;
+  });
+
+  const stats = {
+    total: quotations.length,
+    pending: quotations.filter(q => q.status === 'PENDING').length,
+    sent: quotations.filter(q => q.status === 'SENT').length,
+    accepted: quotations.filter(q => q.status === 'ACCEPTED').length,
+    rejected: quotations.filter(q => q.status === 'REJECTED').length,
+    overdue: quotations.filter(q => q.isOverdue).length,
+    critical: quotations.filter(q => q.urgencyLevel === 'CRITICAL').length,
+    high: quotations.filter(q => q.urgencyLevel === 'HIGH').length,
+    totalValue: quotations.reduce((sum, q) => sum + (q.orderValue || 0), 0),
+    overdueValue: quotations.filter(q => q.isOverdue).reduce((sum, q) => sum + (q.orderValue || 0), 0)
+  };
+
+  if (loading) {
+    return (
+      <>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading pending quotations...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+            <Button onClick={fetchQuotations}>Try Again</Button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <div className="container mx-auto p-6">
+          {/* Header */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 p-8 mb-8 shadow-2xl">
+            <div className="absolute inset-0 bg-black/10"></div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                      <FileClock className="h-8 w-8 text-white" />
+                    </div>
+                    <div>
+                      <h1 className="text-4xl font-bold text-white">Pending Quotations</h1>
+                      <div className="flex gap-2 mt-2">
+                        <Badge className="bg-red-500/20 text-white border-white/30">
+                          {stats.overdue} Overdue
+                        </Badge>
+                        <Badge className="bg-orange-500/20 text-white border-white/30">
+                          {stats.critical} Critical
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-orange-100 text-lg max-w-2xl">
+                    Track quotation deadlines, manage pipeline, and prevent missed opportunities with automated alerts
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                    onClick={() => setShowOverdue(!showOverdue)}
+                  >
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                    {showOverdue ? 'Show All' : 'Show Overdue'}
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      onClick={() => handleExport('pending-quotations', 'excel')}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="bg-white/10 border-red-200/20 text-white hover:bg-white/20"
+                      onClick={() => handleExport('pending-quotations', 'pdf')}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export All PDF
+                    </Button>
+                    {showOverdue && (
+                      <Button
+                        variant="outline"
+                        className="bg-red-500/20 border-red-300/30 text-white hover:bg-red-500/30"
+                        onClick={() => handleFilteredExport('overdue-quotations')}
+                      >
+                        <AlertTriangle className="h-4 w-4 mr-2" />
+                        Export Overdue
+                      </Button>
+                    )}
+                  </div>
+                  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-orange-500 hover:bg-orange-600 text-white shadow-lg">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Quotation
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Add Pending Quotation</DialogTitle>
+                        <DialogDescription>
+                          Track a new quotation that needs to be sent or followed up
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <Label htmlFor="projectOrClientName">Project/Client Name *</Label>
+                          <Input
+                            id="projectOrClientName"
+                            value={formData.projectOrClientName}
+                            onChange={(e) => setFormData({...formData, projectOrClientName: e.target.value})}
+                            placeholder="Enter project or client name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="quotationPendingSince">Pending Since</Label>
+                          <Input
+                            id="quotationPendingSince"
+                            type="date"
+                            value={formData.quotationPendingSince}
+                            onChange={(e) => setFormData({...formData, quotationPendingSince: e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="quotationDeadline">Deadline *</Label>
+                          <Input
+                            id="quotationDeadline"
+                            type="date"
+                            value={formData.quotationDeadline}
+                            onChange={(e) => setFormData({...formData, quotationDeadline: e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="orderValue">Order Value ($)</Label>
+                          <Input
+                            id="orderValue"
+                            type="number"
+                            value={formData.orderValue}
+                            onChange={(e) => setFormData({...formData, orderValue: e.target.value})}
+                            placeholder="Estimated order value"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="status">Status</Label>
+                          <Select value={formData.status} onValueChange={(value) => setFormData({...formData, status: value})}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="PENDING">Pending</SelectItem>
+                              <SelectItem value="SENT">Sent</SelectItem>
+                              <SelectItem value="ACCEPTED">Accepted</SelectItem>
+                              <SelectItem value="REJECTED">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="contactPerson">Contact Person</Label>
+                          <Input
+                            id="contactPerson"
+                            value={formData.contactPerson}
+                            onChange={(e) => setFormData({...formData, contactPerson: e.target.value})}
+                            placeholder="Primary contact person"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="contactEmail">Contact Email</Label>
+                          <Input
+                            id="contactEmail"
+                            type="email"
+                            value={formData.contactEmail}
+                            onChange={(e) => setFormData({...formData, contactEmail: e.target.value})}
+                            placeholder="contact@example.com"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="quotationDocument">Document URL</Label>
+                          <Input
+                            id="quotationDocument"
+                            value={formData.quotationDocument}
+                            onChange={(e) => setFormData({...formData, quotationDocument: e.target.value})}
+                            placeholder="Link to quotation document"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="notes">Notes</Label>
+                          <Textarea
+                            id="notes"
+                            value={formData.notes}
+                            onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                            placeholder="Additional notes or follow-up requirements"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-3 mt-6">
+                        <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleCreateQuotation}>
+                          Add Quotation
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+            <Card className="relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full -mr-8 -mt-8"></div>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                  <div className="p-2 bg-blue-500/10 rounded-lg">
+                    <FileClock className="h-4 w-4 text-blue-600" />
+                  </div>
+                  Total Quotations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-blue-800 dark:text-blue-200">{stats.total}</div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                  ${stats.totalValue.toLocaleString()} total value
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950 dark:to-yellow-900 border-yellow-200 dark:border-yellow-800">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-yellow-500/10 rounded-full -mr-8 -mt-8"></div>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-yellow-700 dark:text-yellow-300 flex items-center gap-2">
+                  <div className="p-2 bg-yellow-500/10 rounded-lg">
+                    <Clock className="h-4 w-4 text-yellow-600" />
+                  </div>
+                  Pending
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-yellow-800 dark:text-yellow-200">{stats.pending}</div>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Awaiting action</p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-full -mr-8 -mt-8"></div>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-green-700 dark:text-green-300 flex items-center gap-2">
+                  <div className="p-2 bg-green-500/10 rounded-lg">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  </div>
+                  Accepted
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-green-800 dark:text-green-200">{stats.accepted}</div>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">Won deals</p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border-red-200 dark:border-red-800">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full -mr-8 -mt-8"></div>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-red-700 dark:text-red-300 flex items-center gap-2">
+                  <div className="p-2 bg-red-500/10 rounded-lg">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                  </div>
+                  Overdue
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-red-800 dark:text-red-200">{stats.overdue}</div>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  ${stats.overdueValue.toLocaleString()} at risk
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 border-orange-200 dark:border-orange-800">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/10 rounded-full -mr-8 -mt-8"></div>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-orange-700 dark:text-orange-300 flex items-center gap-2">
+                  <div className="p-2 bg-orange-500/10 rounded-lg">
+                    <TrendingUp className="h-4 w-4 text-orange-600" />
+                  </div>
+                  Critical
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-orange-800 dark:text-orange-200">{stats.critical}</div>
+                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Due within 24h</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Filters */}
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by project/client name or contact person..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="SENT">Sent</SelectItem>
+                    <SelectItem value="ACCEPTED">Accepted</SelectItem>
+                    <SelectItem value="REJECTED">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={urgencyFilter} onValueChange={setUrgencyFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Urgency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Urgency</SelectItem>
+                    <SelectItem value="OVERDUE">Overdue</SelectItem>
+                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="LOW">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quotations Table */}
+          <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+            <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 rounded-t-lg">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <div className="p-2 bg-orange-500 rounded-lg">
+                  <FileClock className="h-5 w-5 text-white" />
+                </div>
+                Quotation Pipeline
+                <Badge variant="outline" className="ml-2">
+                  {filteredQuotations.length} quotations
+                </Badge>
+              </CardTitle>
+              <CardDescription>
+                Track quotation deadlines and manage follow-ups to prevent missed opportunities
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50 dark:bg-slate-700">
+                    <TableRow>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Project/Client</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Value</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Status</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Deadline</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Days Pending</TableHead>
+                      <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Contact</TableHead>
+                      <TableHead className="text-right font-semibold text-slate-700 dark:text-slate-300">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredQuotations.map((quotation) => (
+                      <TableRow
+                        key={quotation.id}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                          quotation.isOverdue ? 'bg-red-50 dark:bg-red-950/20' : ''
+                        }`}
+                      >
+                        <TableCell className="font-medium">
+                          <div>
+                            <div className="font-semibold">{quotation.projectOrClientName}</div>
+                            {quotation.contactPerson && (
+                              <div className="text-sm text-gray-500">{quotation.contactPerson}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-semibold text-green-600">
+                            ${quotation.orderValue?.toLocaleString() || 'N/A'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              quotation.status === "ACCEPTED"
+                                ? "bg-green-100 text-green-800"
+                                : quotation.status === "SENT"
+                                ? "bg-blue-100 text-blue-800"
+                                : quotation.status === "PENDING"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }
+                          >
+                            {quotation.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3 w-3 text-gray-400" />
+                            <div>
+                              {quotation.quotationDeadline
+                                ? new Date(quotation.quotationDeadline).toLocaleDateString()
+                                : 'No deadline'
+                              }
+                              {quotation.daysToDeadline !== null && (
+                                <div className={`text-xs ${
+                                  quotation.daysToDeadline! < 0
+                                    ? 'text-red-600'
+                                    : quotation.daysToDeadline! <= 3
+                                    ? 'text-orange-600'
+                                    : 'text-gray-500'
+                                }`}>
+                                  {quotation.daysToDeadline! < 0
+                                    ? `${Math.abs(quotation.daysToDeadline!)} days overdue`
+                                    : `${quotation.daysToDeadline!} days left`
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span>{quotation.daysPending} days</span>
+                            {quotation.isOverdue && (
+                              <Badge variant="destructive" className="text-xs">
+                                Overdue
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {quotation.contactPerson && (
+                              <div>{quotation.contactPerson}</div>
+                            )}
+                            {quotation.contactEmail && (
+                              <div className="text-gray-500">{quotation.contactEmail}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedQuotation(quotation);
+                                setIsViewDialogOpen(true);
+                                fetchLinkedFollowUps(quotation.id);
+                              }}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
+                            {quotation.contactEmail && (
+                              <Button variant="outline" size="sm">
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quotation Details Dialog */}
+          <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileClock className="h-5 w-5 text-orange-600" />
+                  {selectedQuotation?.projectOrClientName}
+                </DialogTitle>
+                <DialogDescription>
+                  Complete quotation details and deadline tracking
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedQuotation && (
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Quotation Details</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Project/Client:</span>
+                          <span className="font-medium">{selectedQuotation.projectOrClientName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Order Value:</span>
+                          <span className="font-semibold text-green-600">
+                            ${selectedQuotation.orderValue?.toLocaleString() || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Status:</span>
+                          <Badge
+                            className={
+                              selectedQuotation.status === "ACCEPTED"
+                                ? "bg-green-100 text-green-800"
+                                : selectedQuotation.status === "SENT"
+                                ? "bg-blue-100 text-blue-800"
+                                : selectedQuotation.status === "PENDING"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                            }
+                          >
+                            {selectedQuotation.status}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Urgency:</span>
+                          <Badge
+                            className={
+                              selectedQuotation.urgencyLevel === "OVERDUE"
+                                ? "bg-red-100 text-red-800"
+                                : selectedQuotation.urgencyLevel === "CRITICAL"
+                                ? "bg-red-100 text-red-800"
+                                : selectedQuotation.urgencyLevel === "HIGH"
+                                ? "bg-orange-100 text-orange-800"
+                                : selectedQuotation.urgencyLevel === "MEDIUM"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }
+                          >
+                            {selectedQuotation.urgencyLevel}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Timeline</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Pending Since:</span>
+                          <span>{selectedQuotation.quotationPendingSince
+                            ? new Date(selectedQuotation.quotationPendingSince).toLocaleDateString()
+                            : 'N/A'
+                          }</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Deadline:</span>
+                          <span className={
+                            selectedQuotation.isOverdue
+                              ? 'text-red-600 font-semibold'
+                              : selectedQuotation.daysToDeadline !== null && selectedQuotation.daysToDeadline! <= 3
+                              ? 'text-orange-600 font-semibold'
+                              : ''
+                          }>
+                            {selectedQuotation.quotationDeadline
+                              ? new Date(selectedQuotation.quotationDeadline).toLocaleDateString()
+                              : 'No deadline set'
+                            }
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Days Pending:</span>
+                          <span>{selectedQuotation.daysPending} days</span>
+                        </div>
+                        {selectedQuotation.daysToDeadline !== null && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Days to Deadline:</span>
+                            <span className={
+                              selectedQuotation.daysToDeadline! < 0
+                                ? 'text-red-600 font-semibold'
+                                : selectedQuotation.daysToDeadline! <= 3
+                                ? 'text-orange-600 font-semibold'
+                                : ''
+                            }>
+                              {selectedQuotation.daysToDeadline! < 0
+                                ? `${Math.abs(selectedQuotation.daysToDeadline!)} days overdue`
+                                : `${selectedQuotation.daysToDeadline!} days`
+                              }
+                            </span>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Smart Suggestions */}
+                    <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                          <TrendingUp className="h-5 w-5" />
+                          Smart Recommendations
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {selectedQuotation.isOverdue && (
+                            <div className="flex items-center gap-2 p-2 bg-red-100 dark:bg-red-900/20 rounded">
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm text-red-700 dark:text-red-300">
+                                URGENT: This quotation is overdue. Schedule immediate follow-up call.
+                              </span>
+                            </div>
+                          )}
+                          {selectedQuotation.daysToDeadline !== null && selectedQuotation.daysToDeadline! <= 1 && !selectedQuotation.isOverdue && (
+                            <div className="flex items-center gap-2 p-2 bg-red-100 dark:bg-red-900/20 rounded">
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm text-red-700 dark:text-red-300">
+                                CRITICAL: Deadline approaching in {selectedQuotation.daysToDeadline} day(s). Send urgent reminder.
+                              </span>
+                            </div>
+                          )}
+                          {selectedQuotation.daysToDeadline !== null && selectedQuotation.daysToDeadline! <= 3 && selectedQuotation.daysToDeadline! > 1 && (
+                            <div className="flex items-center gap-2 p-2 bg-orange-100 dark:bg-orange-900/20 rounded">
+                              <Clock className="h-4 w-4 text-orange-600" />
+                              <span className="text-sm text-orange-700 dark:text-orange-300">
+                                HIGH PRIORITY: {selectedQuotation.daysToDeadline} days remaining. Prepare quotation revision.
+                              </span>
+                            </div>
+                          )}
+                          {selectedQuotation.status === 'PENDING' && (selectedQuotation.daysPending || 0) > 7 && (
+                            <div className="flex items-center gap-2 p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded">
+                              <Mail className="h-4 w-4 text-yellow-600" />
+                              <span className="text-sm text-yellow-700 dark:text-yellow-300">
+                                Send gentle reminder email to maintain relationship.
+                              </span>
+                            </div>
+                          )}
+                          {selectedQuotation.contactEmail && (
+                            <div className="flex items-center gap-2 p-2 bg-green-100 dark:bg-green-900/20 rounded">
+                              <Mail className="h-4 w-4 text-green-600" />
+                              <span className="text-sm text-green-700 dark:text-green-300">
+                                Email contact available - Consider digital follow-up options.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Contact Information</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Contact Person:</span>
+                          <span>{selectedQuotation.contactPerson || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Contact Email:</span>
+                          <span>{selectedQuotation.contactEmail || 'N/A'}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Documents</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Document:</span>
+                          <span>
+                            {selectedQuotation.quotationDocument ? (
+                              <a
+                                href={selectedQuotation.quotationDocument}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline"
+                              >
+                                View Document
+                              </a>
+                            ) : (
+                              'No document attached'
+                            )}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {selectedQuotation.notes && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-lg">Notes</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-700 dark:text-gray-300">
+                            {selectedQuotation.notes}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Linked Follow-ups Section */}
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Clock className="h-5 w-5 text-blue-600" />
+                          Linked Follow-ups
+                        </CardTitle>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setFollowUpFormData({
+                              ...followUpFormData,
+                              description: `Follow-up for ${selectedQuotation.projectOrClientName}`,
+                              notes: `Linked to quotation ID: ${selectedQuotation.id}`
+                            });
+                            setIsFollowUpDialogOpen(true);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Follow-up
+                        </Button>
+                      </CardHeader>
+                      <CardContent>
+                        {linkedFollowUps.length === 0 ? (
+                          <div className="text-center py-4">
+                            <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-gray-500">No follow-ups linked yet</p>
+                            <p className="text-xs text-gray-400 mt-1">Create follow-ups to track this quotation</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {linkedFollowUps.map((followUp) => (
+                              <div key={followUp.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Badge
+                                      className={
+                                        followUp.status === "COMPLETED"
+                                          ? "bg-green-100 text-green-800"
+                                          : followUp.status === "IN_PROGRESS"
+                                          ? "bg-blue-100 text-blue-800"
+                                          : "bg-yellow-100 text-yellow-800"
+                                      }
+                                    >
+                                      {followUp.status}
+                                    </Badge>
+                                    <Badge className={
+                                      followUp.priority === "HIGH"
+                                        ? "bg-red-100 text-red-800"
+                                        : followUp.priority === "MEDIUM"
+                                        ? "bg-yellow-100 text-yellow-800"
+                                        : "bg-green-100 text-green-800"
+                                    }>
+                                      {followUp.priority}
+                                    </Badge>
+                                    <span className="text-xs text-gray-500">{followUp.actionType}</span>
+                                  </div>
+                                  <p className="text-sm font-medium">{followUp.actionDescription}</p>
+                                  <p className="text-xs text-gray-500">
+                                    Next: {new Date(followUp.followUpDate).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Follow-up Creation Dialog */}
+          <Dialog open={isFollowUpDialogOpen} onOpenChange={setIsFollowUpDialogOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-blue-600" />
+                  Create Follow-up for {selectedQuotation?.projectOrClientName}
+                </DialogTitle>
+                <DialogDescription>
+                  Schedule a follow-up action for this quotation to ensure timely completion
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="followUpType">Follow-up Type *</Label>
+                  <Select
+                    value={followUpFormData.followUpType}
+                    onValueChange={(value) => setFollowUpFormData({...followUpFormData, followUpType: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CALL">Phone Call</SelectItem>
+                      <SelectItem value="MEETING">Meeting</SelectItem>
+                      <SelectItem value="SITE_VISIT">Site Visit</SelectItem>
+                      <SelectItem value="EMAIL">Email</SelectItem>
+                      <SelectItem value="MESSAGE">Message</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="priority">Priority *</Label>
+                  <Select
+                    value={followUpFormData.priority}
+                    onValueChange={(value) => setFollowUpFormData({...followUpFormData, priority: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description *</Label>
+                <Input
+                  id="description"
+                  value={followUpFormData.description}
+                  onChange={(e) => setFollowUpFormData({...followUpFormData, description: e.target.value})}
+                  placeholder="Brief description of the follow-up action"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="nextAction">Next Action *</Label>
+                <Input
+                  id="nextAction"
+                  value={followUpFormData.nextAction}
+                  onChange={(e) => setFollowUpFormData({...followUpFormData, nextAction: e.target.value})}
+                  placeholder="What specific action needs to be taken?"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="nextActionDate">Action Date *</Label>
+                <Input
+                  id="nextActionDate"
+                  type="date"
+                  value={followUpFormData.nextActionDate}
+                  onChange={(e) => setFollowUpFormData({...followUpFormData, nextActionDate: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="followUpNotes">Additional Notes</Label>
+                <Textarea
+                  id="followUpNotes"
+                  value={followUpFormData.notes}
+                  onChange={(e) => setFollowUpFormData({...followUpFormData, notes: e.target.value})}
+                  placeholder="Any additional context or instructions"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="sendReminder"
+                  checked={followUpFormData.sendReminder}
+                  onChange={(e) => setFollowUpFormData({...followUpFormData, sendReminder: e.target.checked})}
+                  className="rounded"
+                />
+                <Label htmlFor="sendReminder" className="text-sm">
+                  Send email reminder to contact person
+                </Label>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsFollowUpDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateFollowUp}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Create Follow-up
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+    </>
+  );
+}
