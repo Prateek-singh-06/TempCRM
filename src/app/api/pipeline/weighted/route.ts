@@ -482,12 +482,19 @@ export async function PUT(request: Request) {
 
     console.log("Found pipeline:", existingPipeline.id, "updating status to:", status);
 
-    // Check if status is PRODUCTION_STARTED (working) - trigger immediate sales creation
+    // Handle immediate sales based on pipeline status change
     let immediateSaleCreated = false;
+    let immediateSaleUpdated = false;
+    const workingStatuses = ['PRODUCTION_STARTED', 'QUALITY_CHECK', 'PACKING_SHIPPING', 'SHIPPED'];
+    const completedStatuses = ['DELIVERED', 'INSTALLATION_STARTED', 'INSTALLATION_COMPLETE', 'PAYMENT_RECEIVED', 'PROJECT_COMPLETE'];
+    const incomingStatuses = ['ORDER_RECEIVED', 'ORDER_PROCESSING', 'CONTRACT_SIGNING'];
+
     console.log(`Checking status: '${status}' (current: '${existingPipeline.status}')`);
-    if (status === 'PRODUCTION_STARTED') {
+
+    if (workingStatuses.includes(status)) {
+      // Status changed to working - ensure immediate sales entry exists and is active
       try {
-        console.log("Status changing to PRODUCTION_STARTED - creating immediate sales entry");
+        console.log("Status changing to working status - ensuring immediate sales entry exists");
         console.log("Pipeline details:", {
           id: existingPipeline.id,
           name: existingPipeline.name,
@@ -507,7 +514,7 @@ export async function PUT(request: Request) {
           }
         });
 
-        console.log("Existing immediate sale check result:", existingImmediateSale ? "Found existing" : "No existing found");
+        console.log("Existing immediate sale check result:", existingImmediateSale ? `Found existing (ID: ${existingImmediateSale.id}, Status: ${existingImmediateSale.status})` : "No existing found");
 
         if (!existingImmediateSale) {
           // Create immediate sales entry
@@ -534,15 +541,69 @@ export async function PUT(request: Request) {
           console.log("Immediate sales entry created successfully:", immediateSale.id);
           immediateSaleCreated = true;
         } else {
-          console.log("Immediate sales entry already exists for this pipeline");
+          // Update existing immediate sales entry to ONGOING if it's not already
+          if (existingImmediateSale.status !== 'ONGOING') {
+            console.log(`Updating existing immediate sales entry ${existingImmediateSale.id} from ${existingImmediateSale.status} to ONGOING`);
+            await prisma.immediate_sales.update({
+              where: { id: existingImmediateSale.id },
+              data: {
+                status: 'ONGOING',
+                updatedAt: new Date()
+              }
+            });
+            immediateSaleUpdated = true;
+            console.log("Immediate sales entry updated successfully");
+          } else {
+            console.log("Immediate sales entry already active (ONGOING status)");
+          }
         }
       } catch (immediateSaleError) {
-        console.error("Error creating immediate sales entry:", immediateSaleError);
+        console.error("Error handling immediate sales entry:", immediateSaleError);
         console.error("Error details:", immediateSaleError instanceof Error ? immediateSaleError.message : immediateSaleError);
-        // Don't fail the pipeline update if immediate sales creation fails
+        // Don't fail the pipeline update if immediate sales handling fails
+      }
+    } else if (completedStatuses.includes(status) || incomingStatuses.includes(status)) {
+      // Status changed to completed or incoming - mark immediate sales as completed/lost
+      try {
+        console.log(`Status changing to ${completedStatuses.includes(status) ? 'completed' : 'incoming'} status - marking immediate sales as completed`);
+
+        // Find existing immediate sales entry for this pipeline
+        const existingImmediateSale = await prisma.immediate_sales.findFirst({
+          where: {
+            projectId: null, // Pipeline-related immediate sales have null projectId
+            ownerId: user.id,
+            contractor: existingPipeline.companies?.name || existingPipeline.name,
+            valueOfOrder: existingPipeline.orderValue || 0
+          }
+        });
+
+        if (existingImmediateSale && existingImmediateSale.status === 'ONGOING') {
+          // Update the immediate sales entry to mark it as completed
+          const newStatus = completedStatuses.includes(status) ? 'AWARDED' : 'LOST';
+          console.log(`Updating immediate sales entry ${existingImmediateSale.id} from ONGOING to ${newStatus}`);
+
+          await prisma.immediate_sales.update({
+            where: { id: existingImmediateSale.id },
+            data: {
+              status: newStatus,
+              updatedAt: new Date()
+            }
+          });
+
+          immediateSaleUpdated = true;
+          console.log(`Immediate sales entry marked as ${newStatus}`);
+        } else if (existingImmediateSale) {
+          console.log(`Immediate sales entry already has status: ${existingImmediateSale.status}`);
+        } else {
+          console.log("No immediate sales entry found to update");
+        }
+      } catch (immediateSaleError) {
+        console.error("Error updating immediate sales entry:", immediateSaleError);
+        console.error("Error details:", immediateSaleError instanceof Error ? immediateSaleError.message : immediateSaleError);
+        // Don't fail the pipeline update if immediate sales handling fails
       }
     } else {
-      console.log(`Status change condition not met: status='${status}', existing='${existingPipeline.status}'`);
+      console.log(`Status change to other status: status='${status}', existing='${existingPipeline.status}'`);
     }
 
     // Update pipeline status
