@@ -319,7 +319,9 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
       const submittedAt = r.submittedAt || (r as any).submittedAtUTC;
       if (!submittedAt) return false;
       const submitTime = new Date(submittedAt);
-      return Number.isFinite(submitTime.getTime()) && submitTime.getHours() < 10;
+      // Convert UTC time to IST (India Standard Time = UTC+5:30)
+      const istHours = (submitTime.getUTCHours() + 5.5) % 24;
+      return Number.isFinite(submitTime.getTime()) && Math.floor(istHours) < 10;
     }).length;
     const late = Math.max(submitted - onTime, 0);
 
@@ -383,7 +385,9 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
         const submittedAt = record.submittedAt || (record as any).submittedAtUTC;
         if (record.status === 'APPROVED' && submittedAt) {
           const submitTime = new Date(submittedAt);
-          status = submitTime.getHours() < 10 ? 'present' : 'late';
+          // Convert UTC time to IST (India Standard Time = UTC+5:30)
+          const istHours = (submitTime.getUTCHours() + 5.5) % 24;
+          status = Math.floor(istHours) < 10 ? 'present' : 'late';
         } else if (record.status && PRESENT_STATUSES.has(record.status)) {
           status = 'pending';
         } else if (record.status === 'REJECTED') {
@@ -455,7 +459,7 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
       const approved = day.records.filter((record) => record.status === 'APPROVED').length;
       const submitted = day.records.length;
       const rate = totalMembers > 0 ? (submitted / totalMembers) * 100 : 0;
-      const formattedDate = new Date(`${day.date}T00:00:00`).toLocaleDateString('en-US', {
+      const formattedDate = new Date(`${day.date}T00:00:00`).toLocaleDateString('en-IN', {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
@@ -661,7 +665,7 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
                     {member.submittedAt && (
                       <div className="flex items-center gap-1 text-xs text-gray-500">
                         <Clock className="h-3 w-3" />
-                        {new Date(member.submittedAt).toLocaleTimeString()}
+                        {new Date(member.submittedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)
                       </div>
                     )}
                     
@@ -709,7 +713,7 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
                               <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
-                                  {new Date(record.submittedAt).toLocaleTimeString()}
+                                  {new Date(record.submittedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)
                                 </span>
                                 {record.location && (
                                   <span className="flex items-center gap-1">
@@ -736,7 +740,7 @@ export default function AttendanceMonitoringSystem({ metrics }: { metrics: unkno
                             </Badge>
                             {record.reviewedAt && (
                               <p className="text-xs text-gray-500 mt-1">
-                                Reviewed {new Date(record.reviewedAt).toLocaleDateString()}
+                                Reviewed {new Date(record.reviewedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                               </p>
                             )}
                           </div>

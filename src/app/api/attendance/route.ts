@@ -537,6 +537,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Server-side time validation - ensure submitted time is reasonable
+    const submittedTime = new Date(record.submittedAtUTC!);
+    const now = new Date();
+    const timeDifferenceMs = Math.abs(now.getTime() - submittedTime.getTime());
+    const maxAllowedTimeDifference = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+    if (timeDifferenceMs > maxAllowedTimeDifference) {
+      return NextResponse.json(
+        {
+          error: "Time validation failed",
+          details: ["Submitted time is too far from server time"],
+        },
+        { status: 400 }
+      );
+    }
+
     // EXIF validation if available
     if (body.exifTakenAt) {
       const exifValid = validateExifData(
