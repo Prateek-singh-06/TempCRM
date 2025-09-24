@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
 import { randomUUID } from "crypto";
 
 cloudinary.config({
@@ -51,50 +49,18 @@ export async function POST(req: Request) {
       const buffer = Buffer.from(bytes);
       const base64String = `data:${file.type};base64,${buffer.toString('base64')}`;
 
-      // For document files, try Cloudinary first, fallback to local storage
-      try {
-        const uploadResponse = await cloudinary.uploader.upload(base64String, {
-          folder: type === 'quotation' ? "quotations" : "documents",
-          resource_type: "raw",
-          public_id: `${randomUUID()}-${file.name.replace(/\.[^/.]+$/, "")}`
-        });
+      // Upload to Cloudinary
+      const uploadResponse = await cloudinary.uploader.upload(base64String, {
+        folder: type === 'quotation' ? "quotations" : "documents",
+        resource_type: "raw",
+        public_id: `${randomUUID()}-${file.name.replace(/\.[^/.]+$/, "")}`
+      });
 
-        return NextResponse.json({
-          success: true,
-          url: uploadResponse.secure_url,
-          public_id: uploadResponse.public_id
-        });
-
-      } catch (cloudinaryError) {
-        console.warn("Cloudinary upload failed, using local storage:", cloudinaryError);
-
-        // Fallback to local storage
-        const uploadDir = join(process.cwd(), 'public', 'uploads', type || 'documents');
-
-        try {
-          await mkdir(uploadDir, { recursive: true });
-
-          const fileName = `${randomUUID()}${fileExtension}`;
-          const filePath = join(uploadDir, fileName);
-
-          const bytes = await file.arrayBuffer();
-          const buffer = Buffer.from(bytes);
-
-          await writeFile(filePath, buffer);
-
-          const url = `/uploads/${type || 'documents'}/${fileName}`;
-
-          return NextResponse.json({
-            success: true,
-            url: url,
-            local: true
-          });
-
-        } catch (localError) {
-          console.error("Local file upload failed:", localError);
-          return NextResponse.json({ error: "File upload failed" }, { status: 500 });
-        }
-      }
+      return NextResponse.json({
+        success: true,
+        url: uploadResponse.secure_url,
+        public_id: uploadResponse.public_id
+      });
 
     } else {
       // Handle JSON data (for images or other data)
